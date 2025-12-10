@@ -1,0 +1,6 @@
+# Final verified dependencies for the MAS
+langchain-core
+langchain
+langgraph
+langchain-google-genai
+pydantic
