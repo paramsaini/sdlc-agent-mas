@@ -95,6 +95,9 @@ def run_architect(state: SDLC_AgentState) -> dict:
     }
 
 # --- 6. Specialized Coder Agents ---
+
+# IMPORTANT: Ensure normalize_output_to_string is available (from Block 1)
+
 def run_schema_coder(state: SDLC_AgentState) -> dict:
     """Generates the SQL/JSON schema code."""
     mapped_input = RunnablePassthrough.assign(
@@ -104,17 +107,30 @@ def run_schema_coder(state: SDLC_AgentState) -> dict:
     )
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are the specialized Schema Engineer. Generate ONLY the clean SQL or JSON schema code (e.g., CREATE TABLE commands). Output the code block ONLY."),
+        ("system", "You are the specialized Schema Engineer. Generate ONLY the clean SQL or JSON schema code (e.g., CREATE TABLE commands). Output the code block ONLY, starting and ending with triple backticks (```)."),
         ("human", "Plan: {plan}\nExisting Schema Code: {schema_code}\nError Log: {error_log}"),
     ])
     
     chain = mapped_input | prompt | llm_with_tools
+    llm_output = chain.invoke(state)
     
-    # CRITICAL FINAL FIX: Force the output to string before passing to utility
-    llm_output = str(chain.invoke(state)) # Ensure the output is a string representation first
+    # *** ABSOLUTE FINAL FIX: INLINE FORCED CAST AND EXTRACTION ***
+    # This bypasses the utility function completely by performing the list->string->split operation inline.
     
+    # 1. Force the output into a reliable string format
+    raw_text_output = normalize_output_to_string(llm_output)
+    
+    # 2. Extract code using the split method (safe now that it is a string)
+    parts = raw_text_output.split("```")
+    
+    if len(parts) >= 3:
+        # Code is guaranteed to be the second part, stripped of the language tag
+        extracted_code = parts[1].split('\n', 1)[-1].strip()
+    else:
+        extracted_code = raw_text_output.strip() # Fallback if no ticks were found
+
     return {
-        "schema_code": extract_code(llm_output),
+        "schema_code": extracted_code, # Use the directly extracted, guaranteed string
         "iteration": state["iteration"] + 1,
         "error_log": "",
         "next_component": "backend",
