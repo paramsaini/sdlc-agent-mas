@@ -96,25 +96,30 @@ def run_architect(state: SDLC_AgentState) -> dict:
 
 # --- 6. Specialized Coder Agents ---
 def run_schema_coder(state: SDLC_AgentState) -> dict:
-    mapped_input = RunnablePassthrough.assign(plan=lambda x: x.get("plan", ""), schema_code=lambda x: x.get("schema_code", ""), error_log=lambda x: x.get("error_log", ""))
-    prompt = ChatPromptTemplate.from_messages([("system", "You are the specialized Schema Engineer. Generate ONLY the clean SQL or JSON schema code. Output the code block ONLY."), ("human", "Plan: {plan}\nExisting Schema Code: {schema_code}\nError Log: {error_log}"),])
+    """Generates the SQL/JSON schema code."""
+    mapped_input = RunnablePassthrough.assign(
+        plan=lambda x: x.get("plan", ""),
+        schema_code=lambda x: x.get("schema_code", ""),
+        error_log=lambda x: x.get("error_log", ""),
+    )
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are the specialized Schema Engineer. Generate ONLY the clean SQL or JSON schema code (e.g., CREATE TABLE commands). Output the code block ONLY."),
+        ("human", "Plan: {plan}\nExisting Schema Code: {schema_code}\nError Log: {error_log}"),
+    ])
+    
     chain = mapped_input | prompt | llm_with_tools
-    llm_output = chain.invoke(state)
-    return {"schema_code": extract_code(llm_output), "iteration": state["iteration"] + 1, "error_log": "", "next_component": "backend", "messages": [("ai", "Schema Code Generated/Fixed.")]}
-
-def run_backend_coder(state: SDLC_AgentState) -> dict:
-    mapped_input = RunnablePassthrough.assign(plan=lambda x: x.get("plan", ""), backend_code=lambda x: x.get("backend_code", ""), error_log=lambda x: x.get("error_log", ""), schema_code=lambda x: x.get("schema_code", ""),)
-    prompt = ChatPromptTemplate.from_messages([("system", "You are the specialized Backend Engineer. Generate ONLY the clean Python code for the backend API logic. Use the Plan and fix the code based on the Error Log. Output the code block ONLY."), ("human", "Plan: {plan}\nExisting Backend Code: {backend_code}\nSchema Code: {schema_code}\nError Log: {error_log}"),])
-    chain = mapped_input | prompt | llm_with_tools
-    llm_output = chain.invoke(state)
-    return {"backend_code": extract_code(llm_output), "iteration": state["iteration"] + 1, "error_log": "", "next_component": "frontend", "messages": [("ai", "Backend Code Generated/Fixed.")]}
-
-def run_frontend_coder(state: SDLC_AgentState) -> dict:
-    mapped_input = RunnablePassthrough.assign(plan=lambda x: x.get("plan", ""), frontend_code=lambda x: x.get("frontend_code", ""), backend_code=lambda x: x.get("backend_code", ""), error_log=lambda x: x.get("error_log", ""),)
-    prompt = ChatPromptTemplate.from_messages([("system", "You are the specialized Frontend Engineer. Generate ONLY the complete HTML file code, including embedded CSS/JS. Use the Plan and fix the code based on the Error Log. Output the code block ONLY."), ("human", "Plan: {plan}\nBackend Context: {backend_code}\nExisting Frontend Code: {frontend_code}\nError Log: {error_log}"),])
-    chain = mapped_input | prompt | llm_with_tools
-    llm_output = chain.invoke(state)
-    return {"frontend_code": extract_code(llm_output), "iteration": state["iteration"] + 1, "error_log": "", "next_component": "executor", "messages": [("ai", "Frontend Code Generated/Fixed.")]}
+    
+    # CRITICAL FINAL FIX: Force the output to string before passing to utility
+    llm_output = str(chain.invoke(state)) # Ensure the output is a string representation first
+    
+    return {
+        "schema_code": extract_code(llm_output),
+        "iteration": state["iteration"] + 1,
+        "error_log": "",
+        "next_component": "backend",
+        "messages": [("ai", "Schema Code Generated/Fixed.")]
+    }
 
 # --- 7. Security/QA Agent ---
 def run_qa_agent(state: SDLC_AgentState) -> dict:
